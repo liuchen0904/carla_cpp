@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2020 Computer Vision Center (CVC) at the Universitat Autonoma
+// Copyright (c) 2020 Computer Vision Center (CVC) at the Universitat Autonoma
 // de Barcelona (UAB).
 //
 // This work is licensed under the terms of the MIT license.
@@ -17,46 +17,43 @@
 namespace carla {
 namespace geom {
 
+  // 检查 Mesh 对象是否有效
   bool Mesh::IsValid() const {
-    // 至少应为某个顶点
+    // 检查是否至少包含一个顶点
     if (_vertices.empty()) {
       std::cout << "Mesh validation error: there are no vertices in the mesh." << std::endl;
       return false;
     }
 
-    // 如果有 indices，数量必须是3的倍数
+    // 如果有索引数据，检查其数量是否是 3 的倍数（每组三个点构成一个三角形）
     if (!_indexes.empty() && _indexes.size() % 3 != 0) {
       std::cout << "Mesh validation error: the index amount must be multiple of 3." << std::endl;
       return false;
     }
 
+    // 检查材料数据是否闭合，即最后一个材料是否被正确终止
     if (!_materials.empty() && _materials.back().index_end == 0) {
       std::cout << "Mesh validation error: last material was not closed." << std::endl;
       return false;
     }
 
+    // 如果所有检查通过，Mesh 是有效的
     return true;
   }
 
-  // 添加 三角形条带(triangle strip)
-  // 三角形条带是一条，每增加一个点增加一个三角形
-  // 参考：https://blog.csdn.net/tomorrow_opal/article/details/70140965
-  // e.g:
-  // 1   3   5   7
-  // #---#---#---#
-  // | / | / | / |
-  // #---#---#---#
-  // 2   4   6   8
+  // 添加三角形条带（Triangle Strip）
+  // 通过连续的顶点构建三角形，每增加一个顶点会形成一个新的三角形
   void Mesh::AddTriangleStrip(const std::vector<Mesh::vertex_type> &vertices) {
-    if (vertices.size() == 0) {
+    if (vertices.size() == 0) { // 如果没有顶点，则直接返回
       return;
     }
-    DEBUG_ASSERT(vertices.size() >= 3);
-    size_t i = GetVerticesNum() + 2;
-    AddVertices(vertices);
-    bool index_clockwise = true;
+
+    DEBUG_ASSERT(vertices.size() >= 3); // 调试断言：至少需要 3 个顶点
+    size_t i = GetVerticesNum() + 2; // 从第三个顶点开始创建三角形
+    AddVertices(vertices); // 添加所有顶点到当前的顶点列表
+    bool index_clockwise = true; // 初始顺时针方向
     while (i < GetVerticesNum()) {
-      index_clockwise = !index_clockwise;
+      index_clockwise = !index_clockwise; // 交替切换三角形的方向
       if (index_clockwise) {
         AddIndex(i + 1);
         AddIndex(i);
@@ -66,107 +63,107 @@ namespace geom {
         AddIndex(i);
         AddIndex(i + 1);
       }
-      ++i;
+      ++i; // 移动到下一个顶点
     }
   }
 
-  // 添加 三角形扇(triangle fan)
-  // 三角形扇是第一个点是中心，其他的点都围绕着它，第2个点和最后一个点是一样的就可以围成一个圈了
-  // 例如：
-  // 2   1   6
-  // #---#---#
-  // | / | \ |
-  // #---#---#
-  // 3   4   5
+  // 添加三角形扇（Triangle Fan）
+  // 三角形扇的第一个顶点是中心点，后续的顶点围绕中心点构建三角形
   void Mesh::AddTriangleFan(const std::vector<Mesh::vertex_type> &vertices) {
-    DEBUG_ASSERT(vertices.size() >= 3);
-    const size_t initial_index = GetVerticesNum() + 1;
-    size_t i = GetVerticesNum() + 2;
-    AddVertices(vertices);
+    DEBUG_ASSERT(vertices.size() >= 3); // 调试断言：至少需要 3 个顶点
+    const size_t initial_index = GetVerticesNum() + 1; // 扇形的中心点索引
+    size_t i = GetVerticesNum() + 2; // 从第二个顶点开始构建三角形
+    AddVertices(vertices); // 添加所有顶点到当前的顶点列表
     while (i < GetVerticesNum()) {
-      AddIndex(initial_index);
-      AddIndex(i);
-      AddIndex(i + 1);
-      ++i;
+      AddIndex(initial_index); // 中心点
+      AddIndex(i);             // 当前顶点
+      AddIndex(i + 1);         // 下一个顶点
+      ++i; // 移动到下一个顶点
     }
   }
 
+  // 添加一个顶点到 Mesh
   void Mesh::AddVertex(vertex_type vertex) {
     _vertices.push_back(vertex);
   }
 
+  // 批量添加顶点到 Mesh
   void Mesh::AddVertices(const std::vector<Mesh::vertex_type> &vertices) {
     std::copy(vertices.begin(), vertices.end(), std::back_inserter(_vertices));
   }
 
+  // 添加法线向量到 Mesh
   void Mesh::AddNormal(normal_type normal) {
     _normals.push_back(normal);
   }
 
+  // 添加索引到 Mesh
   void Mesh::AddIndex(index_type index) {
     _indexes.push_back(index);
   }
 
+  // 添加纹理坐标到 Mesh
   void Mesh::AddUV(uv_type uv) {
     _uvs.push_back(uv);
   }
 
+  // 批量添加纹理坐标到 Mesh
   void Mesh::AddUVs(const std::vector<uv_type> & uv) {
     std::copy(uv.begin(), uv.end(), std::back_inserter(_uvs));
   }
 
+  // 添加材质到 Mesh
   void Mesh::AddMaterial(const std::string &material_name) {
-    const size_t open_index = _indexes.size();
+    const size_t open_index = _indexes.size(); // 当前索引的大小
     if (!_materials.empty()) {
-      if (_materials.back().index_end == 0) {
-        // @todo: 将此注释更改为调试警告
-        // std::cout << "last material was not closed, closing it..." << std::endl;
-        EndMaterial();
+      if (_materials.back().index_end == 0) { // 检查上一个材质是否被正确结束
+        EndMaterial(); // 如果没有结束，则强制结束它
       }
     }
-    if (open_index % 3 != 0) {
+    if (open_index % 3 != 0) { // 确保索引数是 3 的倍数
       std::cout << "open_index % 3 != 0" << std::endl;
       return;
     }
-    _materials.emplace_back(material_name, open_index, 0);
+    _materials.emplace_back(material_name, open_index, 0); // 添加一个新材质
   }
 
+  // 结束当前材质的定义
   void Mesh::EndMaterial() {
     const size_t close_index = _indexes.size();
-    if (_materials.empty() ||
-        _materials.back().index_start == close_index ||
-        _materials.back().index_end != 0) {
-      // @todo: 将此注释更改为调试警告
-      // std::cout << "WARNING: Bad end of material. Material not started." << std::endl;
+    if (_materials.empty() || // 如果没有材质
+        _materials.back().index_start == close_index || // 或者材质的起始点和当前索引一致
+        _materials.back().index_end != 0) { // 或者材质已经结束
       return;
     }
-    if (_indexes.empty() || close_index % 3 != 0) {
-      // @todo: 将此注释更改为调试警告
-      // std::cout << "WARNING: Bad end of material. Face not started/ended." << std::endl;
+    if (_indexes.empty() || close_index % 3 != 0) { // 检查索引是否合法
       return;
     }
-    _materials.back().index_end = close_index;
+    _materials.back().index_end = close_index; // 设置材质的结束点
   }
 
+  // 生成 OBJ 格式的字符串表示
   std::string Mesh::GenerateOBJ() const {
-    if (!IsValid()) {
+    if (!IsValid()) { // 如果 Mesh 无效，则返回空字符串
       return "";
     }
     std::stringstream out;
-    out << std::fixed; // 避免使用科学计数法
+    out << std::fixed; // 避免科学计数法
 
+    // 输出顶点
     out << "# List of geometric vertices, with (x, y, z) coordinates." << std::endl;
     for (auto &v : _vertices) {
       out << "v " << v.x << " " << v.y << " " << v.z << std::endl;
     }
 
+    // 输出纹理坐标
     if (!_uvs.empty()) {
-      out << std::endl << "# List of texture coordinates, in (u, v) coordinates, these will vary between 0 and 1." << std::endl;
+      out << std::endl << "# List of texture coordinates, in (u, v) coordinates." << std::endl;
       for (auto &vt : _uvs) {
         out << "vt " << vt.x << " " << vt.y << std::endl;
       }
     }
 
+    // 输出法线
     if (!_normals.empty()) {
       out << std::endl << "# List of vertex normals in (x, y, z) form; normals might not be unit vectors." << std::endl;
       for (auto &vn : _normals) {
@@ -174,221 +171,30 @@ namespace geom {
       }
     }
 
+    // 输出面（Polygonal faces）
     if (!_indexes.empty()) {
       out << std::endl << "# Polygonal face element." << std::endl;
       auto it_m = _materials.begin();
       auto it = _indexes.begin();
       size_t index_counter = 0u;
       while (it != _indexes.end()) {
-        // While exist materials
-        if (it_m != _materials.end()) {
-          // 如果当前材料在此索引处结束
-          if (it_m->index_end == index_counter) {
-            ++it_m;
-          }
-          // 如果当前材料从该索引开始
-          if (it_m->index_start == index_counter) {
-            out << "\nusemtl " << it_m->name << std::endl;
-          }
+        // 如果材质在当前索引结束，切换材质
+        if (it_m != _materials.end() && it_m->index_end == index_counter) {
+          ++it_m;
         }
-
-        // 使用 3 个连续的索引添加实际表面
+        // 输出当前材质
+        if (it_m != _materials.end() && it_m->index_start == index_counter) {
+          out << "\nusemtl " << it_m->name << std::endl;
+        }
+        // 输出三角形面
         out << "f " << *it; ++it;
         out << " " << *it; ++it;
         out << " " << *it << std::endl; ++it;
-
         index_counter += 3;
       }
     }
 
     return out.str();
   }
-
-  std::string Mesh::GenerateOBJForRecast() const {
-    if (!IsValid()) {
-      return "";
-    }
-    std::stringstream out;
-    out << std::fixed; // 避免使用科学计数法
-
-    out << "# List of geometric vertices, with (x, y, z) coordinates." << std::endl;
-    for (auto &v : _vertices) {
-      // 为 Recast 库切换“y”和“z”
-      out << "v " << v.x << " " << v.z << " " << v.y << std::endl;
-    }
-
-    if (!_indexes.empty()) {
-      out << std::endl << "# Polygonal face element." << std::endl;
-      auto it_m = _materials.begin();
-      auto it = _indexes.begin();
-      size_t index_counter = 0u;
-      while (it != _indexes.end()) {
-        // While exist materials
-        if (it_m != _materials.end()) {
-          // 如果当前材料在此索引处结束
-          if (it_m->index_end == index_counter) {
-            ++it_m;
-          }
-          // 如果当前材料从该索引开始
-          if (it_m->index_start == index_counter) {
-            out << "\nusemtl " << it_m->name << std::endl;
-          }
-        }
-        // 使用 3 个连续的索引添加实际面由于空间已经改变，因此将面构建方向更改为顺时针。
-        out << "f " << *it; ++it;
-        const auto i_2 = *it; ++it;
-        const auto i_3 = *it; ++it;
-        out << " " << i_3 << " " << i_2 << std::endl;
-        index_counter += 3;
-      }
-    }
-
-    return out.str();
-  }
-
-  std::string Mesh::GeneratePLY() const {
-    if (!IsValid()) {
-      return "Invalid Mesh";
-    }
-    // 生成头
-    std::stringstream out;
-    return out.str();
-  }
-
-  const std::vector<Mesh::vertex_type> &Mesh::GetVertices() const {
-    return _vertices;
-  }
-
-  std::vector<Mesh::vertex_type> &Mesh::GetVertices() {
-    return _vertices;
-  }
-
-  size_t Mesh::GetVerticesNum() const {
-    return _vertices.size();
-  }
-
-  const std::vector<Mesh::normal_type> &Mesh::GetNormals() const {
-    return _normals;
-  }
-
-  const std::vector<Mesh::index_type> &Mesh::GetIndexes() const {
-    return _indexes;
-  }
-
-  std::vector<Mesh::index_type>& Mesh::GetIndexes() {
-    return _indexes;
-  }
-  size_t Mesh::GetIndexesNum() const {
-    return _indexes.size();
-  }
-
-  const std::vector<Mesh::uv_type> &Mesh::GetUVs() const {
-    return _uvs;
-  }
-
-  const std::vector<Mesh::material_type> &Mesh::GetMaterials() const {
-    return _materials;
-  }
-
-  size_t Mesh::GetLastVertexIndex() const {
-    return _vertices.size();
-  }
-
-  Mesh& Mesh::ConcatMesh(const Mesh& rhs, int num_vertices_to_link) {
-
-    if (!rhs.IsValid()){
-      return *this += rhs;
-    }
-    const size_t v_num = GetVerticesNum();
-    const size_t i_num = GetIndexesNum();
-
-    _vertices.insert(
-      _vertices.end(),
-      rhs.GetVertices().begin(),
-      rhs.GetVertices().end());
-
-    _normals.insert(
-      _normals.end(),
-      rhs.GetNormals().begin(),
-      rhs.GetNormals().end());
-
-    const size_t vertex_to_start_concating = v_num - num_vertices_to_link;
-    for( size_t i = 1; i < num_vertices_to_link; ++i ) {
-      _indexes.push_back( vertex_to_start_concating + i );
-      _indexes.push_back( vertex_to_start_concating + i  + 1 );
-      _indexes.push_back( v_num + i );
-
-      _indexes.push_back( vertex_to_start_concating + i + 1);
-      _indexes.push_back( v_num + i + 1);
-      _indexes.push_back( v_num + i);
-    }
-
-    std::transform(
-      rhs.GetIndexes().begin(),
-      rhs.GetIndexes().end(),
-      std::back_inserter(_indexes),
-      [=](size_t index) {return index + v_num; });
-
-    _uvs.insert(
-      _uvs.end(),
-      rhs.GetUVs().begin(),
-      rhs.GetUVs().end());
-
-    std::transform(
-      rhs.GetMaterials().begin(),
-      rhs.GetMaterials().end(),
-      std::back_inserter(_materials),
-      [=](MeshMaterial mat) {
-        mat.index_start += i_num;
-        mat.index_end += i_num;
-        return mat;
-      });
-
-    return *this;
-  }
-
-  Mesh &Mesh::operator+=(const Mesh &rhs) {
-    const size_t v_num = GetVerticesNum();
-    const size_t i_num = GetIndexesNum();
-
-    _vertices.insert(
-        _vertices.end(),
-        rhs.GetVertices().begin(),
-        rhs.GetVertices().end());
-
-    _normals.insert(
-        _normals.end(),
-        rhs.GetNormals().begin(),
-        rhs.GetNormals().end());
-
-    std::transform(
-        rhs.GetIndexes().begin(),
-        rhs.GetIndexes().end(),
-        std::back_inserter(_indexes),
-        [=](size_t index) {return index + v_num;});
-
-    _uvs.insert(
-        _uvs.end(),
-        rhs.GetUVs().begin(),
-        rhs.GetUVs().end());
-
-    std::transform(
-        rhs.GetMaterials().begin(),
-        rhs.GetMaterials().end(),
-        std::back_inserter(_materials),
-        [=](MeshMaterial mat) {
-          mat.index_start += i_num;
-          mat.index_end += i_num;
-          return mat;
-        });
-
-    return *this;
-  }
-
-  Mesh operator+(const Mesh &lhs, const Mesh &rhs) {
-    Mesh m = lhs;
-    return m += rhs;
-  }
-
 } // namespace geom
 } // namespace carla
