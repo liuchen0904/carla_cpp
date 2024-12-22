@@ -146,42 +146,56 @@ namespace client {
   LaneInvasionSensor::~LaneInvasionSensor() {
     Stop();
   }
-// 开始监听，接收用户回调函数
-  void LaneInvasionSensor::Listen(CallbackFunctionType callback) {
+// 监听压线事件的函数
+void LaneInvasionSensor::Listen(CallbackFunctionType callback) {
+    // 尝试将父组件转换为车辆对象
     auto vehicle = boost::dynamic_pointer_cast<Vehicle>(GetParent());
-    if (vehicle == nullptr) {
-      log_error(GetDisplayId(), ": not attached to a vehicle");
-      return;
+    if (vehicle == nullptr) { // 检查父组件是否为空或者不是车辆类型
+        log_error(GetDisplayId(), ": not attached to a vehicle"); // 如果不是车辆类型，记录错误日志
+        return; // 提前退出函数
     }
 
-    auto episode = GetEpisode().Lock();
-    // 创建压线回调对象
-    auto cb = std::make_shared<LaneInvasionCallback>(
-        *vehicle,
-        episode->GetCurrentMap(),
-        std::move(callback));
+    // 获取当前的模拟环境（Episode）
+    auto episode = GetEpisode().Lock(); // 获取一个被锁定的共享指针，用于访问当前模拟的上下文
 
+    // 创建一个 LaneInvasionCallback 对象，用于处理压线事件
+    auto cb = std::make_shared<LaneInvasionCallback>(
+        *vehicle,                          // 将当前的车辆对象传递给回调对象
+        episode->GetCurrentMap(),          // 获取当前模拟环境中的地图对象
+        std::move(callback));              // 将用户传递的回调函数绑定到回调对象中
+
+    // 注册一个新的 Tick 事件回调，每一帧都会调用该回调
     const size_t callback_id = episode->RegisterOnTickEvent([cb=std::move(cb)](const auto &snapshot) {
-      try {
-        cb->Tick(snapshot);
-      } catch (const std::exception &e) {
-        log_error("LaneInvasionSensor:", e.what());
-      }
+        try {
+            cb->Tick(snapshot); // 每帧调用 LaneInvasionCallback 对象的 Tick 方法
+        } catch (const std::exception &e) {
+            log_error("LaneInvasionSensor:", e.what()); // 如果回调执行过程中发生异常，记录错误日志
+        }
     });
 
-    const size_t previous = _callback_id.exchange(callback_id);
-    if (previous != 0u) {
-      episode->RemoveOnTickEvent(previous);
+    // 更新 _callback_id 成员变量以保存当前注册的回调 ID
+    const size_t previous = _callback_id.exchange(callback_id); // 使用线程安全的方式更新回调 ID
+
+    // 如果之前有注册过的回调，则移除旧的回调
+    if (previous != 0u) { // 判断是否存在旧的回调
+        episode->RemoveOnTickEvent(previous); // 根据回调 ID 移除旧的 Tick 回调
     }
-  }
- // 停止监听
-  void LaneInvasionSensor::Stop() {
-    const size_t previous = _callback_id.exchange(0u);
-    auto episode = GetEpisode().TryLock();
-    if ((previous != 0u) && (episode != nullptr)) {
-      episode->RemoveOnTickEvent(previous);
+}
+
+// 停止监听压线事件的函数
+void LaneInvasionSensor::Stop() {
+    // 将 _callback_id 设置为 0，并保存之前的回调 ID
+    const size_t previous = _callback_id.exchange(0u); // 将当前回调 ID 重置为 0
+
+    // 尝试获取模拟环境（Episode）
+    auto episode = GetEpisode().TryLock(); // 尝试获取一个非阻塞的共享指针，可能返回 nullptr
+
+    // 如果存在之前注册的回调且 Episode 有效，则移除回调
+    if ((previous != 0u) && (episode != nullptr)) { // 检查是否有需要移除的回调
+        episode->RemoveOnTickEvent(previous); // 根据之前的回调 ID 移除事件监听
     }
-  }
+}
 
 } // namespace client
 } // namespace carla
+
